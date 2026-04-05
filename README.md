@@ -1,7 +1,9 @@
 # Space Snakes
 
 > 16-bit retro snake with neon laser visuals, set in the cosmos.
-<video src="video.mp4" controls width="100%"></video>
+
+![alt text](image.png)
+![alt text](image-1.png)
 
 ## Features
 

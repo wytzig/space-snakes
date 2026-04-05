@@ -1,11 +1,27 @@
+import math
 import pygame
 from settings import (
-    COLS, ROWS, CELL, FPS, SPEED_NORMAL,
+    COLS, ROWS, SPEED_NORMAL,
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER,
+    NUM_SNAKES, AI_SKINS,
 )
-from snake import Snake, UP, DOWN, LEFT, RIGHT
+from snake import Snake
 from food import Food
 from renderer import Starfield, HUD
+from snake_ai import SnakeAI
+
+
+def _spawn_positions(n):
+    """Spread n starting positions evenly in a circle across the grid."""
+    positions = []
+    for i in range(n):
+        angle = (2 * math.pi * i) / n - math.pi / 2  # start at top
+        x = int(COLS // 2 + (COLS // 3) * math.cos(angle))
+        y = int(ROWS // 2 + (ROWS // 3) * math.sin(angle))
+        x = max(3, min(COLS - 4, x))
+        y = max(1, min(ROWS - 2, y))
+        positions.append((x, y))
+    return positions
 
 
 class Game:
@@ -13,37 +29,35 @@ class Game:
         self.screen = screen
         self.hud = HUD(*fonts)
         self.starfield = Starfield()
+        self.ai = SnakeAI()
         self.state = STATE_MENU
         self.tick = 0
-        self._touch_start = None   # (x, y) normalized finger-down position
+        self._touch_start = None
         self._reset()
 
     def _reset(self):
-        self.snake = Snake()
-        self.food  = Food()
-        self.score = 0
+        positions = _spawn_positions(NUM_SNAKES)
+        self.snakes = [
+            Snake(skin=AI_SKINS[i % len(AI_SKINS)], start_pos=positions[i])
+            for i in range(NUM_SNAKES)
+        ]
+        self.food = Food()
+        occupied = {pos for s in self.snakes for pos in s.body}
+        self.food.spawn(occupied)
         self.move_timer = 0
 
     # --- Input ---
     def _handle_swipe(self, dx, dy):
-        """Convert a swipe delta (normalized) into a direction change."""
-        MIN_SWIPE = 0.05   # ignore tiny taps
+        MIN_SWIPE = 0.05
         if abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
             return
-        if abs(dx) >= abs(dy):
-            new_dir = RIGHT if dx > 0 else LEFT
-        else:
-            new_dir = DOWN if dy > 0 else UP
-        if self.state == STATE_PLAYING:
-            self.snake.set_direction(new_dir)
-        elif self.state == STATE_MENU:
-            self.state = STATE_PLAYING
+        if self.state == STATE_MENU:
             self._reset()
+            self.state = STATE_PLAYING
 
     def handle_event(self, event):
         if event.type == pygame.FINGERDOWN:
             self._touch_start = (event.x, event.y)
-
         elif event.type == pygame.FINGERUP:
             if self._touch_start is not None:
                 dx = event.x - self._touch_start[0]
@@ -55,13 +69,9 @@ class Game:
             k = event.key
             if self.state == STATE_MENU:
                 if k == pygame.K_RETURN:
-                    self.state = STATE_PLAYING
                     self._reset()
+                    self.state = STATE_PLAYING
             elif self.state == STATE_PLAYING:
-                if k in (pygame.K_UP,    pygame.K_w): self.snake.set_direction(UP)
-                if k in (pygame.K_DOWN,  pygame.K_s): self.snake.set_direction(DOWN)
-                if k in (pygame.K_LEFT,  pygame.K_a): self.snake.set_direction(LEFT)
-                if k in (pygame.K_RIGHT, pygame.K_d): self.snake.set_direction(RIGHT)
                 if k == pygame.K_p:
                     self.state = STATE_PAUSED
             elif self.state == STATE_PAUSED:
@@ -86,18 +96,45 @@ class Game:
             return
 
         self.move_timer += 1
-        if self.move_timer >= SPEED_NORMAL:
-            self.move_timer = 0
-            self.snake.move()
+        if self.move_timer < SPEED_NORMAL:
+            return
+        self.move_timer = 0
 
-            if not self.snake.alive:
-                self.state = STATE_GAMEOVER
-                return
+        # All occupied cells = alive AND dead snake bodies (dead bodies are solid obstacles)
+        all_occupied = {pos for s in self.snakes for pos in s.body}
 
-            if self.snake.head() == self.food.pos:
-                self.score += 10
-                self.snake.grow()
-                self.food.spawn(self.snake.body)
+        # AI picks a direction for each snake
+        for snake in self.snakes:
+            if snake.alive:
+                new_dir = self.ai.decide(snake, all_occupied)
+                snake.set_direction(new_dir)
+
+        # Move all snakes
+        for snake in self.snakes:
+            if snake.alive:
+                snake.move()
+
+        # Cross-collision: head entered any snake's body (alive or dead)
+        for snake in [s for s in self.snakes if s.alive]:
+            head = snake.head()
+            for other in self.snakes:
+                if other is snake:
+                    continue
+                if head in other.body:
+                    snake.alive = False
+                    break
+
+        # Food collection (first snake to reach food wins the pellet)
+        for snake in [s for s in self.snakes if s.alive]:
+            if snake.head() == self.food.pos:
+                snake.score += 10
+                snake.grow()
+                occupied = {pos for s in self.snakes for pos in s.body}
+                self.food.spawn(occupied)
+                break
+
+        if not any(s.alive for s in self.snakes):
+            self.state = STATE_GAMEOVER
 
     # --- Draw ---
     def draw(self):
@@ -109,15 +146,19 @@ class Game:
         elif self.state in (STATE_PLAYING, STATE_PAUSED):
             self.hud.draw_grid(self.screen)
             self.food.draw(self.screen)
-            self.snake.draw(self.screen)
-            self.hud.draw_score(self.screen, self.score)
+            for snake in self.snakes:
+                snake.draw(self.screen)
+            self.hud.draw_scoreboard(self.screen, self.snakes)
             if self.state == STATE_PAUSED:
                 self.hud.draw_pause(self.screen)
 
         elif self.state == STATE_GAMEOVER:
             self.hud.draw_grid(self.screen)
             self.food.draw(self.screen)
-            self.snake.draw(self.screen)
-            self.hud.draw_gameover(self.screen, self.score, self.tick)
+            for snake in self.snakes:
+                snake.draw(self.screen)
+            winner = max(self.snakes, key=lambda s: s.score)
+            self.hud.draw_gameover(self.screen, winner.score, self.tick,
+                                   winner_color=winner.skin["head"])
 
         pygame.display.flip()

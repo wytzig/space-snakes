@@ -10,10 +10,10 @@ class Food:
         self.pulse = 0.0
         self.spawn([])
 
-    def spawn(self, snake_body):
+    def spawn(self, occupied):
         while True:
             pos = (random.randint(0, COLS - 1), random.randint(0, ROWS - 1))
-            if pos not in snake_body:
+            if pos not in occupied:
                 self.pos = pos
                 break
 

@@ -65,17 +65,31 @@ class HUD:
         sub = self.font_small.render("ESC to quit   F fullscreen", True, STAR_DIM)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 90))
 
-    def draw_gameover(self, surface, score, tick):
+    def draw_gameover(self, surface, score, tick, winner_color=None):
         over = self.font_large.render("GAME OVER", True, NEON_PINK)
         surface.blit(over, (SCREEN_W // 2 - over.get_width() // 2, SCREEN_H // 3))
 
-        sc = self.font_small.render(f"SCORE  {score:05d}", True, NEON_GOLD)
+        score_color = winner_color if winner_color else NEON_GOLD
+        sc = self.font_small.render(f"WINNER  {score:05d}", True, score_color)
         surface.blit(sc, (SCREEN_W // 2 - sc.get_width() // 2, SCREEN_H // 3 + 70))
 
         alpha = int(128 + 127 * math.sin(tick * 0.05))
         restart = self.font_small.render("R to restart   ESC for menu", True, WHITE)
         restart.set_alpha(alpha)
         surface.blit(restart, (SCREEN_W // 2 - restart.get_width() // 2, SCREEN_H // 2 + 60))
+
+    def draw_scoreboard(self, surface, snakes):
+        """Right-side scoreboard showing each snake's color swatch and score."""
+        swatch = 14
+        row_h  = 26
+        x      = SCREEN_W - 170
+        y      = 10
+        for i, snake in enumerate(snakes):
+            color = snake.skin["head"] if snake.alive else (55, 55, 55)
+            pygame.draw.rect(surface, color, pygame.Rect(x, y + i * row_h + 3, swatch, swatch))
+            label = f"S{i + 1}  {snake.score:05d}"
+            txt = self.font_small.render(label, True, color)
+            surface.blit(txt, (x + swatch + 6, y + i * row_h))
 
     def draw_pause(self, surface):
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)

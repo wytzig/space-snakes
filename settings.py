@@ -61,3 +61,17 @@ STATE_PLAYING   = "playing"
 STATE_PAUSED    = "paused"
 STATE_GAMEOVER  = "gameover"
 STATE_SETTINGS  = "settings"
+
+# --- Spectator / AI battle ---
+NUM_SNAKES = 6   # easily adjustable; one skin is assigned per snake (wraps if > 8)
+
+AI_SKINS = [
+    {"head": (0,   255,  80),  "body": (0,   180,  50),  "glow": (0,   255,  80)},  # green
+    {"head": (0,   240, 255),  "body": (0,   160, 200),  "glow": (0,   240, 255)},  # cyan
+    {"head": (255,   0, 180),  "body": (180,   0, 120),  "glow": (255,   0, 180)},  # pink
+    {"head": (255, 140,   0),  "body": (200,  90,   0),  "glow": (255, 140,   0)},  # orange
+    {"head": (160,   0, 255),  "body": (110,   0, 200),  "glow": (160,   0, 255)},  # purple
+    {"head": (255, 255,   0),  "body": (200, 200,   0),  "glow": (255, 255,   0)},  # yellow
+    {"head": (255,  50,  50),  "body": (200,  20,  20),  "glow": (255,  50,  50)},  # red
+    {"head": (0,   255, 180),  "body": (0,   200, 130),  "glow": (0,   255, 180)},  # teal
+]

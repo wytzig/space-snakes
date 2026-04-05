@@ -10,14 +10,20 @@ OPPOSITES = {UP: DOWN, DOWN: UP, LEFT: RIGHT, RIGHT: LEFT}
 
 
 class Snake:
-    def __init__(self, skin_name=DEFAULT_SKIN):
-        cx, cy = COLS // 2, ROWS // 2
+    def __init__(self, skin=None, start_pos=None, start_dir=RIGHT):
+        cx, cy = start_pos if start_pos is not None else (COLS // 2, ROWS // 2)
         self.body = [(cx, cy), (cx - 1, cy), (cx - 2, cy)]
-        self.direction = RIGHT
-        self.next_dir  = RIGHT
+        self.direction = start_dir
+        self.next_dir  = start_dir
         self.grow_pending = 0
         self.alive = True
-        self.skin = SKINS[skin_name]
+        self.score = 0
+        if skin is None:
+            self.skin = SKINS[DEFAULT_SKIN]
+        elif isinstance(skin, str):
+            self.skin = SKINS[skin]
+        else:
+            self.skin = skin
 
     # --- Input ---
     def set_direction(self, new_dir):

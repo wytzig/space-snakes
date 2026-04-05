@@ -106,7 +106,7 @@ class Game:
         # AI picks a direction for each snake
         for snake in self.snakes:
             if snake.alive:
-                new_dir = self.ai.decide(snake, all_occupied)
+                new_dir = self.ai.decide(snake, all_occupied, self.food.pos)
                 snake.set_direction(new_dir)
 
         # Move all snakes
@@ -132,6 +132,12 @@ class Game:
                 occupied = {pos for s in self.snakes for pos in s.body}
                 self.food.spawn(occupied)
                 break
+
+        # Respawn food if it ended up inside a dead snake body
+        # (e.g. two snakes collided head-on exactly on the food cell)
+        all_cells = {pos for s in self.snakes for pos in s.body}
+        if self.food.pos in all_cells:
+            self.food.spawn(all_cells)
 
         if not any(s.alive for s in self.snakes):
             self.state = STATE_GAMEOVER
@@ -161,4 +167,4 @@ class Game:
             self.hud.draw_gameover(self.screen, winner.score, self.tick,
                                    winner_color=winner.skin["head"])
 
-        pygame.display.flip()
+        # flip is handled by main() after scaling to the window

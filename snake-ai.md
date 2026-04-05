@@ -1,37 +1,40 @@
 # Snake AI — Feature & Implementation Log
 
-## Current version: v2 — Open-Space Seeking
+## Current version: v3 — Food-Seeking + Flood-Fill Safety
 
 ### File
-`snake_ai.py` — `SnakeAI.decide(snake, all_occupied)`
+`snake_ai.py` — `SnakeAI.decide(snake, all_occupied, food_pos)`
 
 ### How it works
-1. Collect all three non-reverse directions.
-2. Filter to those that step to an **in-bounds, unoccupied** cell.
-3. Score each safe direction:
-   - **open_neighbors**: number of free in-bounds cells adjacent to the destination cell (0-4).
-   - **straight bonus**: +0.3 for continuing in the current direction (reduces jitter).
-   - **noise**: uniform random 0–0.4 (breaks ties, adds unpredictability).
-4. Pick the direction with the highest score.
-5. If no direction is safe, hold course (snake will die on the next step).
+1. Collect all three non-reverse directions that step to an in-bounds, unoccupied cell.
+2. **Flood-fill** each candidate destination to count total reachable open area.
+3. **BFS** from the snake's head to `food_pos` through unoccupied cells; record the first-step direction.
+4. If the BFS food direction is a safe candidate **and** its flood-fill count >= snake body length → chase food.
+5. Otherwise → pick the candidate with the largest flood-fill area (safety-first).  Small noise breaks ties.
 
-`all_occupied` contains bodies of **all** snakes — alive AND dead — so dead snake
-bodies act as solid permanent obstacles.
+`all_occupied` contains bodies of **all** snakes — alive AND dead.
+
+### Behaviour by snake size
+| Snake length | Behaviour |
+|---|---|
+| Short (≤ 10) | Aggressively chases food; flood-fill threshold easily met |
+| Medium | Chases food unless path leads into a tight space |
+| Long (≥ 30+) | Often falls back to open-space routing; avoids tunnels that would trap it |
 
 ### What it avoids
 - Grid border collisions
 - Other snake bodies (alive and dead)
-- Self-body collisions (own body is part of `all_occupied`)
+- Self-trapping (flood-fill < body length triggers safety fallback)
 
 ### What it does NOT handle
-- Food seeking (no targeting)
-- Head-to-head collision prediction (doesn't anticipate where other snakes will be next tick)
-- Long-term path planning (looks only 1 step + 1 neighbor level ahead)
+- Head-to-head collision prediction (doesn't model where other snakes will be next tick)
+- Tail-chasing optimisation (treats own tail as permanently blocked; a snake could in theory follow its own tail through a tight space)
 
 ### Known limitations
-- Still gets trapped in shrinking pockets because it only evaluates immediate
-  open neighbors, not total reachable area (flood-fill would fix this — see v3).
-- Can still loop in open areas if noise repeatedly favours the same sub-optimal path.
+- BFS treats the snake's own tail as permanently blocked, so paths through
+  tight spaces that would open up as the tail retreats are rejected.
+- No inter-snake coordination — two snakes may race for the same food and
+  collide head-on.
 
 ---
 

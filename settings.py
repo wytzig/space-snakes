@@ -63,7 +63,10 @@ STATE_GAMEOVER  = "gameover"
 STATE_SETTINGS  = "settings"
 
 # --- Spectator / AI battle ---
-NUM_SNAKES = 6   # easily adjustable; one skin is assigned per snake (wraps if > 8)
+NUM_SNAKES = 6          # starting snake count; one skin per snake (wraps if > 8)
+RESPAWN_INTERVAL  = 25  # snake-move ticks between respawn checks (~3 s at default speed)
+RESPAWN_THRESHOLD = 5   # spawn new snakes when alive count drops below this
+RESPAWN_AMOUNT    = 2   # how many snakes to spawn each respawn event
 
 AI_SKINS = [
     {"head": (0,   255,  80),  "body": (0,   180,  50),  "glow": (0,   255,  80)},  # green

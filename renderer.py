@@ -98,6 +98,17 @@ class HUD:
         txt = self.font_large.render("PAUSED", True, NEON_CYAN)
         surface.blit(txt, (SCREEN_W // 2 - txt.get_width() // 2, SCREEN_H // 2 - 40))
 
+    def draw_corpses(self, surface, corpse_pellets):
+        """Draw each dead-snake body cell as a small dim coloured dot."""
+        for (gx, gy), color in corpse_pellets.items():
+            cx = gx * CELL + CELL // 2
+            cy = gy * CELL + CELL // 2
+            r = max(2, CELL // 5)
+            glow_surf = pygame.Surface((r * 2 + 6, r * 2 + 6), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (*color, 40), (r + 3, r + 3), r + 3)
+            pygame.draw.circle(glow_surf, (*color, 130), (r + 3, r + 3), r)
+            surface.blit(glow_surf, (cx - r - 3, cy - r - 3))
+
     def draw_grid(self, surface):
         """Subtle grid lines for the playing field."""
         line_color = (255, 255, 255, 8)

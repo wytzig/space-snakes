@@ -1,3 +1,4 @@
+import random
 import pygame
 from settings import CELL, COLS, ROWS, SKINS, DEFAULT_SKIN
 
@@ -18,6 +19,7 @@ class Snake:
         self.grow_pending = 0
         self.alive = True
         self.score = 0
+        self.greediness = random.random()  # 0.0 = cautious, 1.0 = reckless
         if skin is None:
             self.skin = SKINS[DEFAULT_SKIN]
         elif isinstance(skin, str):

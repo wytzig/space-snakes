@@ -15,6 +15,7 @@ class Game:
         self.starfield = Starfield()
         self.state = STATE_MENU
         self.tick = 0
+        self._touch_start = None   # (x, y) normalized finger-down position
         self._reset()
 
     def _reset(self):
@@ -24,7 +25,32 @@ class Game:
         self.move_timer = 0
 
     # --- Input ---
+    def _handle_swipe(self, dx, dy):
+        """Convert a swipe delta (normalized) into a direction change."""
+        MIN_SWIPE = 0.05   # ignore tiny taps
+        if abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
+            return
+        if abs(dx) >= abs(dy):
+            new_dir = RIGHT if dx > 0 else LEFT
+        else:
+            new_dir = DOWN if dy > 0 else UP
+        if self.state == STATE_PLAYING:
+            self.snake.set_direction(new_dir)
+        elif self.state == STATE_MENU:
+            self.state = STATE_PLAYING
+            self._reset()
+
     def handle_event(self, event):
+        if event.type == pygame.FINGERDOWN:
+            self._touch_start = (event.x, event.y)
+
+        elif event.type == pygame.FINGERUP:
+            if self._touch_start is not None:
+                dx = event.x - self._touch_start[0]
+                dy = event.y - self._touch_start[1]
+                self._handle_swipe(dx, dy)
+                self._touch_start = None
+
         if event.type == pygame.KEYDOWN:
             k = event.key
             if self.state == STATE_MENU:

@@ -2,6 +2,6 @@ services:
   - type: web
     name: space-snakes-server
     runtime: python
-    buildCommand: pip install -r requirements_server.txt
+    buildCommand: pip install websockets
     startCommand: python3 server.py
     plan: free

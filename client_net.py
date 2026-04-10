@@ -80,11 +80,14 @@ class ClientNet:
     async def _connect_browser(self):
         import js  # only available inside Pygbag/emscripten  # noqa: PLC0415
         from pyodide.ffi import create_proxy  # noqa: PLC0415
-        ws = js.WebSocket.new(self.url)
+
+        # js.eval is more compatible than js.WebSocket.new() across Pyodide
+        # versions — the .new attribute is None in some Pygbag builds.
+        ws = js.eval(f"new WebSocket({json.dumps(self.url)})")
         self._ws = ws
 
-        # create_proxy keeps the Python closures alive across GC cycles while
-        # JS still holds a reference to them (required by Pyodide/Pygbag).
+        # create_proxy keeps the closures alive across GC cycles while JS
+        # still holds a reference to them.
         self._proxy_on_message = create_proxy(lambda e: self._pending_msgs.append(e.data))
         self._proxy_on_close = create_proxy(lambda e: setattr(self, "_connected", False))
 

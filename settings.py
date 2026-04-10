@@ -73,11 +73,15 @@ DIR_MAP = {"UP": UP, "DOWN": DOWN, "LEFT": LEFT, "RIGHT": RIGHT}
 # Browser (Pygbag): os.environ is always empty; URL is read from the query string instead.
 #   e.g. https://yourname.github.io/space-snakes/?ws=wss://your-server.onrender.com
 #   Must be wss:// — browsers block ws:// connections from HTTPS pages.
+_RENDER_URL = "wss://space-snakes-p6tu.onrender.com"  # update if you redeploy to Render
+
 if sys.platform == "emscripten":
+    # os.environ is always empty in WASM — read the server URL from the query string.
+    # e.g. https://wytzig.github.io/space-snakes/?ws=wss://other-server.onrender.com
     import js as _js
     import urllib.parse as _up
     _qs = _up.parse_qs(_js.window.location.search.lstrip("?"))
-    WS_URL = _qs.get("ws", ["wss://your-server.onrender.com"])[0]
+    WS_URL = _qs.get("ws", [_RENDER_URL])[0]
 else:
     WS_URL = os.environ.get("SPACE_SNAKES_WS_URL", "ws://localhost:8765")
 

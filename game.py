@@ -21,6 +21,7 @@ class Game:
         self.tick = 0
         self._food_pulse = 0.0
         self._should_connect = False
+        self._connecting = False
         self._touch_start = None
         self._connect_error = None
 
@@ -75,11 +76,14 @@ class Game:
 
         if self._should_connect:
             self._should_connect = False
+            self._connecting = True
             try:
                 await self.net.connect()
                 self.state = STATE_PLAYING
             except Exception as exc:
                 self._connect_error = str(exc)
+            finally:
+                self._connecting = False
 
         if self.state == STATE_PLAYING and not self.net.is_connected():
             self.state = STATE_MENU
@@ -91,11 +95,12 @@ class Game:
 
         if self.state == STATE_MENU:
             self.hud.draw_menu(self.screen, self.tick)
-            if self._connect_error:
-                err = self.hud.font_small.render(
-                    f"Could not connect: {self._connect_error}", True, NEON_PINK
-                )
-                self.screen.blit(err, (SCREEN_W // 2 - err.get_width() // 2, SCREEN_H // 2 + 140))
+            status = self.net.connect_status if self._connecting else self._connect_error
+            if status:
+                color = (200, 200, 255) if self._connecting else NEON_PINK
+                label = f"Could not connect: {status}" if self._connect_error and not self._connecting else status
+                msg = self.hud.font_small.render(label, True, color)
+                self.screen.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2, SCREEN_H // 2 + 140))
             return
 
         state = self.net.get_state()

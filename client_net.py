@@ -22,6 +22,7 @@ class ClientNet:
         self._ws = None
         self._connected = False
         self._send_queue = None   # desktop only
+        self.connect_status = ""  # human-readable progress shown in the UI
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -50,7 +51,10 @@ class ClientNet:
         if sys.platform == "emscripten":
             if self._connected:
                 import js  # noqa: PLC0415
-                # json.dumps encodes the payload string as a JS string literal
+                # Two json.dumps calls are intentional, not a bug:
+                #   inner call  → produces the JSON string the server expects, e.g. '{"type":"input","dir":"UP"}'
+                #   outer call  → encodes that string as a JS string literal (adds surrounding quotes + escaping)
+                #                 so it can be safely spliced into js.eval() as `ws.send(<literal>)`.
                 payload = json.dumps(json.dumps({"type": "input", "dir": direction}))
                 js.eval(f"window._ss_ws && window._ss_ws.send({payload})")
         else:
@@ -84,30 +88,47 @@ class ClientNet:
         # Inject a self-contained JS WebSocket with a plain-array message
         # buffer.  No Python functions are assigned as JS callbacks, so
         # create_proxy / GC issues cannot occur.
-        js.eval(f"""
-        window._ss_open   = false;
-        window._ss_closed = false;
-        window._ss_msgs   = [];
-        (function() {{
-            var ws = new WebSocket({json.dumps(self.url)});
-            window._ss_ws = ws;
-            ws.onopen    = function()  {{ window._ss_open = true; }};
-            ws.onclose   = function()  {{ window._ss_open = false;
-                                         window._ss_closed = true; }};
-            ws.onmessage = function(e) {{ window._ss_msgs.push(e.data); }};
-        }})();
-        """)
+        MAX_ATTEMPTS = 3
+        TIMEOUT_S = 15.0   # per attempt; covers Render free-tier cold start (~30s total)
 
-        # Poll until the socket opens or definitively fails
-        while not js.eval("window._ss_open") and not js.eval("window._ss_closed"):
-            await asyncio.sleep(0.05)
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            self.connect_status = f"Connecting... (attempt {attempt}/{MAX_ATTEMPTS})"
+            js.eval(f"""
+            window._ss_open   = false;
+            window._ss_closed = false;
+            window._ss_msgs   = [];
+            (function() {{
+                var ws = new WebSocket({json.dumps(self.url)});
+                window._ss_ws = ws;
+                ws.onopen    = function()  {{ window._ss_open = true; }};
+                ws.onclose   = function()  {{ window._ss_open = false;
+                                             window._ss_closed = true; }};
+                ws.onmessage = function(e) {{ window._ss_msgs.push(e.data); }};
+            }})();
+            """)
 
-        if not js.eval("window._ss_open"):
-            raise ConnectionError(
-                "WebSocket could not connect — is the server running and reachable?"
-            )
+            waited = 0.0
+            while (not js.eval("window._ss_open")
+                   and not js.eval("window._ss_closed")
+                   and waited < TIMEOUT_S):
+                await asyncio.sleep(0.1)
+                waited += 0.1
 
-        self._connected = True
+            if js.eval("window._ss_open"):
+                self._connected = True
+                self.connect_status = ""
+                return
+
+            print(f"[connect] attempt {attempt}/{MAX_ATTEMPTS} failed (closed after {waited:.1f}s)")
+            if attempt < MAX_ATTEMPTS:
+                self.connect_status = f"Retrying... ({attempt}/{MAX_ATTEMPTS} failed)"
+                await asyncio.sleep(5.0)
+
+        self.connect_status = ""
+        raise ConnectionError(
+            f"Could not connect after {MAX_ATTEMPTS} attempts. "
+            "The server may still be waking up — try again in 30 seconds."
+        )
 
     # ------------------------------------------------------------------ #
     # Desktop path (websockets package)                                   #
@@ -132,7 +153,8 @@ class ClientNet:
         try:
             async for raw in self._ws:
                 self._process_message(raw)
-        except Exception:
+        except Exception as exc:
+            print(f"[recv_loop] disconnected: {exc}")
             self._connected = False
 
     async def _send_loop(self):
@@ -142,7 +164,8 @@ class ClientNet:
                 await self._ws.send(json.dumps(msg))
             except asyncio.TimeoutError:
                 continue
-            except Exception:
+            except Exception as exc:
+                print(f"[send_loop] disconnected: {exc}")
                 self._connected = False
                 break
 

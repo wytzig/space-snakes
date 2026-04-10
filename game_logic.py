@@ -62,9 +62,6 @@ class SnakeLogic:
                 for x in range(2, COLS - 3):
                     if all((x - i, y) in empty_cells for i in range(3)):
                         candidates.append((x, y))
-                        break
-                if candidates:
-                    break
         if not candidates:
             return  # grid is so full we cannot respawn; try again next tick
         sx, sy = random.choice(candidates)

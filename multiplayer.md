@@ -90,36 +90,10 @@ When all clients disconnect the session resets (scores and food cleared).
 
 ---
 
-## New Files Required
-
-| File | Purpose |
-|---|---|
-| `server.py` | Asyncio WebSocket game server |
-| `client_net.py` | Thin async wrapper around the WS connection (used by `game.py`) |
-| `render_remote.py` (optional) | Render other players' snakes with different skins |
-| `requirements_server.txt` | `websockets`, `asyncio` for the server deployment |
-
-Changes to existing files:
-- `main.py` — add `asyncio.run()` wrapper required by Pygbag
-- `game.py` — replace direct snake control with networked input/state model
-- `settings.py` — add `WS_URL` constant (server address)
-
----
-
-## Deployment Steps (when ready to implement)
+## Deployment
 
 1. Install Pygbag: `pip3 install pygbag`
 2. Build: `python3 -m pygbag --build main.py` → outputs `build/web/`
-3. Push `build/web/` contents to the `gh-pages` branch
-4. Deploy `server.py` to Render (free tier, auto-deploys from GitHub)
-5. Set `WS_URL` in `settings.py` to the Render URL
-
----
-
-## Open Questions (decide before implementing)
-
-- **Max players per session?** Suggested: 4. More = harder to fit on screen.
-- **What happens when a snake dies?** Spectate until round ends, or respawn after N seconds?
-- **Round structure?** Last snake alive wins, or endless with a scoreboard?
-- **Name entry?** Simple text input on the menu screen, or auto-assigned (Player 1, Player 2)?
-- **Same session for everyone, or room codes?** Room codes add complexity but allow private games.
+3. Push to `main` — GitHub Actions handles the Pygbag build and Pages deploy automatically.
+4. Deploy `server.py` to Render (free tier, auto-deploys from GitHub via `render.yaml`)
+5. `WS_URL` in `settings.py` defaults to the Render URL; override via `?ws=` query param.

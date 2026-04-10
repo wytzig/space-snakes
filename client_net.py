@@ -65,11 +65,13 @@ class ClientNet:
         if self._ws:
             if sys.platform == "emscripten":
                 self._ws.close()
-                # Release Pyodide proxies so JS-held references don't leak
                 for attr in ("_proxy_on_message", "_proxy_on_close"):
                     proxy = getattr(self, attr, None)
                     if proxy is not None:
-                        proxy.destroy()
+                        try:
+                            proxy.destroy()
+                        except Exception:
+                            pass
             else:
                 await self._ws.close()
 
@@ -78,30 +80,60 @@ class ClientNet:
     # ------------------------------------------------------------------ #
 
     async def _connect_browser(self):
-        import js  # only available inside Pygbag/emscripten  # noqa: PLC0415
-        from pyodide.ffi import create_proxy  # noqa: PLC0415
+        # Pygbag/Pyodide builds vary — try every known working approach in order.
+        import js  # noqa: PLC0415
 
-        # js.eval is more compatible than js.WebSocket.new() across Pyodide
-        # versions — the .new attribute is None in some Pygbag builds.
-        ws = js.eval(f"new WebSocket({json.dumps(self.url)})")
+        ws = self._make_browser_ws(js, self.url)
         self._ws = ws
+        self._attach_browser_callbacks(js, ws)
 
-        # create_proxy keeps the closures alive across GC cycles while JS
-        # still holds a reference to them.
-        self._proxy_on_message = create_proxy(lambda e: self._pending_msgs.append(e.data))
-        self._proxy_on_close = create_proxy(lambda e: setattr(self, "_connected", False))
-
-        ws.onmessage = self._proxy_on_message
-        ws.onclose = self._proxy_on_close
-
-        # Poll readyState until OPEN (1) or CLOSED (3)
-        while ws.readyState == 0:   # CONNECTING
+        while ws.readyState == 0:       # CONNECTING
             await asyncio.sleep(0.05)
 
-        if ws.readyState != 1:      # not OPEN
+        if ws.readyState != 1:          # not OPEN
             raise ConnectionError(f"WebSocket failed (readyState={ws.readyState})")
 
         self._connected = True
+
+    @staticmethod
+    def _make_browser_ws(js, url):
+        """Try every known way to construct a browser WebSocket."""
+        attempts = [
+            lambda: js.window.WebSocket.new(url),
+            lambda: js.WebSocket.new(url),
+            lambda: js.eval(f"new WebSocket({json.dumps(url)})"),
+            lambda: getattr(js, "globalThis").WebSocket.new(url),
+        ]
+        last_err = None
+        for attempt in attempts:
+            try:
+                ws = attempt()
+                if ws is not None:
+                    return ws
+            except Exception as exc:
+                last_err = exc
+        raise ConnectionError(f"Cannot create WebSocket in this browser: {last_err}")
+
+    def _attach_browser_callbacks(self, js, ws):
+        """Attach onmessage / onclose, with and without create_proxy."""
+        def _on_msg(e):
+            self._pending_msgs.append(e.data)
+
+        def _on_close(e):
+            self._connected = False
+
+        try:
+            from pyodide.ffi import create_proxy  # noqa: PLC0415
+            self._proxy_on_message = create_proxy(_on_msg)
+            self._proxy_on_close   = create_proxy(_on_close)
+            ws.onmessage = self._proxy_on_message
+            ws.onclose   = self._proxy_on_close
+        except Exception:
+            # Older Pyodide: direct assignment works without create_proxy
+            self._cb_message = _on_msg
+            self._cb_close   = _on_close
+            ws.onmessage = _on_msg
+            ws.onclose   = _on_close
 
     # ------------------------------------------------------------------ #
     # Desktop path (websockets package)                                   #

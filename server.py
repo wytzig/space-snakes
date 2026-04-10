@@ -7,11 +7,13 @@ Deploy to Render / Railway for GitHub Pages multiplayer.
 """
 import asyncio
 import json
+import os
 import websockets
 from settings import SPEED_NORMAL, FPS
 from game_logic import GameSession
 
-TICK_INTERVAL = SPEED_NORMAL / FPS   # seconds between game ticks (~0.133 s)
+TICK_INTERVAL = SPEED_NORMAL / FPS          # seconds between game ticks (~0.133 s)
+PORT = int(os.environ.get("PORT", 8765))    # Render sets PORT; fall back to 8765 locally
 
 session = GameSession()
 connected = {}    # websocket -> player_id
@@ -71,8 +73,8 @@ async def _handler(websocket):
 async def main():
     loop = asyncio.get_running_loop()
     loop.create_task(_game_loop())
-    async with websockets.serve(_handler, "0.0.0.0", 8765):
-        print("Space Snakes server running on ws://0.0.0.0:8765")
+    async with websockets.serve(_handler, "0.0.0.0", PORT):
+        print(f"Space Snakes server running on ws://0.0.0.0:{PORT}")
         await asyncio.Future()
 
 

@@ -1,4 +1,3 @@
-import random
 import pygame
 from settings import CELL, COLS, ROWS, SKINS, DEFAULT_SKIN
 
@@ -11,15 +10,14 @@ OPPOSITES = {UP: DOWN, DOWN: UP, LEFT: RIGHT, RIGHT: LEFT}
 
 
 class Snake:
-    def __init__(self, skin=None, start_pos=None, start_dir=RIGHT):
-        cx, cy = start_pos if start_pos is not None else (COLS // 2, ROWS // 2)
+    def __init__(self, skin=None):
+        cx, cy = COLS // 2, ROWS // 2
         self.body = [(cx, cy), (cx - 1, cy), (cx - 2, cy)]
-        self.direction = start_dir
-        self.next_dir  = start_dir
+        self.direction = RIGHT
+        self.next_dir  = RIGHT
         self.grow_pending = 0
         self.alive = True
         self.score = 0
-        self.greediness = random.random()  # 0.0 = cautious, 1.0 = reckless
         if skin is None:
             self.skin = SKINS[DEFAULT_SKIN]
         elif isinstance(skin, str):

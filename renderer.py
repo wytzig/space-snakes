@@ -2,9 +2,9 @@ import pygame
 import random
 import math
 from settings import (
-    SCREEN_W, SCREEN_H, CELL, COLS, ROWS,
+    SCREEN_W, SCREEN_H, CELL,
     NEON_GREEN, NEON_CYAN, NEON_PINK, NEON_GOLD,
-    WHITE, BLACK, DIM_PURPLE, STAR_DIM, STAR_BRIGHT,
+    WHITE, STAR_DIM, STAR_BRIGHT,
     BACKGROUNDS, DEFAULT_BG,
 )
 
@@ -52,9 +52,6 @@ class HUD:
         tx = SCREEN_W // 2 - title.get_width() // 2
         surface.blit(title, (tx, SCREEN_H // 3))
 
-        # Glow behind title
-        glow = self.font_large.render("SPACE SNAKES", True, (*NEON_GREEN[:2], 30))
-
         # Pulsing prompt
         alpha = int(128 + 127 * math.sin(tick * 0.05))
         prompt = self.font_small.render("PRESS ENTER TO START", True, WHITE)
@@ -65,12 +62,11 @@ class HUD:
         sub = self.font_small.render("ESC to quit   F fullscreen", True, STAR_DIM)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 90))
 
-    def draw_gameover(self, surface, score, tick, winner_color=None):
+    def draw_gameover(self, surface, score, tick):
         over = self.font_large.render("GAME OVER", True, NEON_PINK)
         surface.blit(over, (SCREEN_W // 2 - over.get_width() // 2, SCREEN_H // 3))
 
-        score_color = winner_color if winner_color else NEON_GOLD
-        sc = self.font_small.render(f"WINNER  {score:05d}", True, score_color)
+        sc = self.font_small.render(f"SCORE  {score:05d}", True, NEON_GOLD)
         surface.blit(sc, (SCREEN_W // 2 - sc.get_width() // 2, SCREEN_H // 3 + 70))
 
         alpha = int(128 + 127 * math.sin(tick * 0.05))
@@ -78,36 +74,12 @@ class HUD:
         restart.set_alpha(alpha)
         surface.blit(restart, (SCREEN_W // 2 - restart.get_width() // 2, SCREEN_H // 2 + 60))
 
-    def draw_scoreboard(self, surface, snakes):
-        """Right-side scoreboard showing each snake's color swatch and score."""
-        swatch = 14
-        row_h  = 26
-        x      = SCREEN_W - 170
-        y      = 10
-        for i, snake in enumerate(snakes):
-            color = snake.skin["head"] if snake.alive else (55, 55, 55)
-            pygame.draw.rect(surface, color, pygame.Rect(x, y + i * row_h + 3, swatch, swatch))
-            label = f"S{i + 1}  {snake.score:05d}"
-            txt = self.font_small.render(label, True, color)
-            surface.blit(txt, (x + swatch + 6, y + i * row_h))
-
     def draw_pause(self, surface):
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 120))
         surface.blit(overlay, (0, 0))
         txt = self.font_large.render("PAUSED", True, NEON_CYAN)
         surface.blit(txt, (SCREEN_W // 2 - txt.get_width() // 2, SCREEN_H // 2 - 40))
-
-    def draw_corpses(self, surface, corpse_pellets):
-        """Draw each dead-snake body cell as a small dim coloured dot."""
-        for (gx, gy), color in corpse_pellets.items():
-            cx = gx * CELL + CELL // 2
-            cy = gy * CELL + CELL // 2
-            r = max(2, CELL // 5)
-            glow_surf = pygame.Surface((r * 2 + 6, r * 2 + 6), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*color, 40), (r + 3, r + 3), r + 3)
-            pygame.draw.circle(glow_surf, (*color, 130), (r + 3, r + 3), r)
-            surface.blit(glow_surf, (cx - r - 3, cy - r - 3))
 
     def draw_grid(self, surface):
         """Subtle grid lines for the playing field."""

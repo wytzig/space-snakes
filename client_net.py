@@ -2,8 +2,9 @@
 Thin async wrapper around the WebSocket connection.
 
 Two paths:
-  - sys.platform == "emscripten" (Pygbag/WASM): uses js.WebSocket via the
-    browser's native API. The websockets package does not work here.
+  - sys.platform == "emscripten" (Pygbag/WASM): creates the WebSocket via
+    js.eval() and keeps ALL callbacks in pure JavaScript. Python only polls
+    JS globals — no Python-to-JS callback crossing, no create_proxy needed.
   - Otherwise (local desktop): uses the websockets package over TCP.
 
 Requires (desktop only): python3 -m pip install websockets
@@ -20,10 +21,7 @@ class ClientNet:
         self.latest_state = None
         self._ws = None
         self._connected = False
-        # Desktop-only send queue
-        self._send_queue = None
-        # Browser-only pending message buffer (filled by JS callbacks)
-        self._pending_msgs = []
+        self._send_queue = None   # desktop only
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -36,20 +34,25 @@ class ClientNet:
             await self._connect_desktop()
 
     def poll(self):
-        """
-        Process buffered messages from the JS WebSocket callback.
-        Must be called every frame on emscripten; no-op on desktop.
-        """
-        if sys.platform == "emscripten" and self._pending_msgs:
-            for raw in self._pending_msgs:
-                self._process_message(raw)
-            self._pending_msgs.clear()
+        """Drain buffered messages. Must be called every frame on emscripten."""
+        if sys.platform != "emscripten" or not self._connected:
+            return
+        import js  # noqa: PLC0415
+        # Read and clear the JS message buffer in one splice call
+        msgs = js.eval("window._ss_msgs.splice(0)")
+        for i in range(msgs.length):
+            self._process_message(str(msgs[i]))
+        # Detect dropped connection
+        if js.eval("window._ss_closed"):
+            self._connected = False
 
     def send_direction(self, direction):
-        """Non-blocking: queue or send a direction input string."""
         if sys.platform == "emscripten":
-            if self._ws and self._connected:
-                self._ws.send(json.dumps({"type": "input", "dir": direction}))
+            if self._connected:
+                import js  # noqa: PLC0415
+                # json.dumps encodes the payload string as a JS string literal
+                payload = json.dumps(json.dumps({"type": "input", "dir": direction}))
+                js.eval(f"window._ss_ws && window._ss_ws.send({payload})")
         else:
             if self._send_queue is not None:
                 self._send_queue.put_nowait({"type": "input", "dir": direction})
@@ -62,78 +65,49 @@ class ClientNet:
 
     async def close(self):
         self._connected = False
-        if self._ws:
-            if sys.platform == "emscripten":
-                self._ws.close()
-                for attr in ("_proxy_on_message", "_proxy_on_close"):
-                    proxy = getattr(self, attr, None)
-                    if proxy is not None:
-                        try:
-                            proxy.destroy()
-                        except Exception:
-                            pass
-            else:
-                await self._ws.close()
+        if sys.platform == "emscripten":
+            try:
+                import js  # noqa: PLC0415
+                js.eval("window._ss_ws && window._ss_ws.close()")
+            except Exception:
+                pass
+        elif self._ws:
+            await self._ws.close()
 
     # ------------------------------------------------------------------ #
-    # Browser path (js.WebSocket)                                         #
+    # Browser path — all WS callbacks stay in pure JavaScript             #
     # ------------------------------------------------------------------ #
 
     async def _connect_browser(self):
-        # Pygbag/Pyodide builds vary — try every known working approach in order.
         import js  # noqa: PLC0415
 
-        ws = self._make_browser_ws(js, self.url)
-        self._ws = ws
-        self._attach_browser_callbacks(js, ws)
+        # Inject a self-contained JS WebSocket with a plain-array message
+        # buffer.  No Python functions are assigned as JS callbacks, so
+        # create_proxy / GC issues cannot occur.
+        js.eval(f"""
+        window._ss_open   = false;
+        window._ss_closed = false;
+        window._ss_msgs   = [];
+        (function() {{
+            var ws = new WebSocket({json.dumps(self.url)});
+            window._ss_ws = ws;
+            ws.onopen    = function()  {{ window._ss_open = true; }};
+            ws.onclose   = function()  {{ window._ss_open = false;
+                                         window._ss_closed = true; }};
+            ws.onmessage = function(e) {{ window._ss_msgs.push(e.data); }};
+        }})();
+        """)
 
-        while ws.readyState == 0:       # CONNECTING
+        # Poll until the socket opens or definitively fails
+        while not js.eval("window._ss_open") and not js.eval("window._ss_closed"):
             await asyncio.sleep(0.05)
 
-        if ws.readyState != 1:          # not OPEN
-            raise ConnectionError(f"WebSocket failed (readyState={ws.readyState})")
+        if not js.eval("window._ss_open"):
+            raise ConnectionError(
+                "WebSocket could not connect — is the server running and reachable?"
+            )
 
         self._connected = True
-
-    @staticmethod
-    def _make_browser_ws(js, url):
-        """Try every known way to construct a browser WebSocket."""
-        attempts = [
-            lambda: js.window.WebSocket.new(url),
-            lambda: js.WebSocket.new(url),
-            lambda: js.eval(f"new WebSocket({json.dumps(url)})"),
-            lambda: getattr(js, "globalThis").WebSocket.new(url),
-        ]
-        last_err = None
-        for attempt in attempts:
-            try:
-                ws = attempt()
-                if ws is not None:
-                    return ws
-            except Exception as exc:
-                last_err = exc
-        raise ConnectionError(f"Cannot create WebSocket in this browser: {last_err}")
-
-    def _attach_browser_callbacks(self, js, ws):
-        """Attach onmessage / onclose, with and without create_proxy."""
-        def _on_msg(e):
-            self._pending_msgs.append(e.data)
-
-        def _on_close(e):
-            self._connected = False
-
-        try:
-            from pyodide.ffi import create_proxy  # noqa: PLC0415
-            self._proxy_on_message = create_proxy(_on_msg)
-            self._proxy_on_close   = create_proxy(_on_close)
-            ws.onmessage = self._proxy_on_message
-            ws.onclose   = self._proxy_on_close
-        except Exception:
-            # Older Pyodide: direct assignment works without create_proxy
-            self._cb_message = _on_msg
-            self._cb_close   = _on_close
-            ws.onmessage = _on_msg
-            ws.onclose   = _on_close
 
     # ------------------------------------------------------------------ #
     # Desktop path (websockets package)                                   #

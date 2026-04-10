@@ -62,7 +62,7 @@ The game runs in your browser via GitHub Pages. Multiplayer needs two things:
 5. Wait ~2 minutes for the build and deploy to finish
 6. Your game is now live at:
    ```
-   https://YOUR-GITHUB-USERNAME.github.io/space-snakes/
+   https://wytzig.github.io/space-snakes/
    ```
 
 ---
@@ -72,7 +72,7 @@ The game runs in your browser via GitHub Pages. Multiplayer needs two things:
 Open the game URL with your server address added as a `?ws=` parameter:
 
 ```
-https://YOUR-GITHUB-USERNAME.github.io/space-snakes/?ws=wss://YOUR-SERVER.onrender.com
+https://wytzig.github.io/space-snakes/?ws=wss://YOUR-SERVER.onrender.com
 ```
 
 Example:

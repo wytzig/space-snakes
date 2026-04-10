@@ -1,134 +1,111 @@
-# Code Review — Space Snakes Multiplayer + GitHub Pages
+# Code Review — Space Snakes
 
-**Scope:** Full multiplayer feature + Pygbag/WASM deployment  
-**Date:** 2026-04-10  
-**Previous review:** same file — items marked FIXED or CARRIED
+**Scope:** Full codebase  
+**Date:** 2026-04-10
 
 ---
 
 ## Fixed Since Last Review
 
+All 9 previously reported issues are closed:
+
 | # | Was | Now |
 |---|-----|-----|
-| 1 | `SnakeLogic.grow()` missing — server crash on food eat | Fixed: method added at `game_logic.py:49` |
-| 2 | `websockets` unusable in WASM | Fixed: dual emscripten/desktop path in `client_net.py` |
-| 3 | `pip3` installs to Python 3.7 | Documented in CLAUDE.md |
-| 4 | `ws://` mixed-content warning | Documented in CLAUDE.md |
-| 5 | `Snake` / `Food` classes dead code | Removed |
-| 6 | Direction constants duplicated | Moved to `settings.py`; `game_logic.py` now imports from there |
-| 7 | `main.py` raw string `"menu"` | Fixed: uses `STATE_MENU` |
-| 8 | `asyncio.get_event_loop()` deprecated | Fixed: uses `get_running_loop()` |
-| 9 | Grid surface allocated every frame | Fixed: cached in `HUD.__init__` |
-| 10 | Dead snakes rendered identically to alive | Fixed: `alive == false` snakes are skipped |
-
----
-
-## Critical Bugs
-
-### 1. `settings.py:69` — `os.environ` is always empty in Pygbag WASM
-
-```python
-import os as _os
-WS_URL = _os.environ.get("SPACE_SNAKES_WS_URL", "ws://localhost:8765")
-```
-
-This is the documented mechanism for setting the server URL on GitHub Pages, but it **does not work** in Pygbag. Pygbag compiles Python to WASM via Pyodide, and Pyodide's `os.environ` is an empty dict — there is no OS environment in a browser context. The env var will never be set, so `WS_URL` is always `"ws://localhost:8765"` in every WASM build. The GitHub Pages build will ship with the wrong URL.
-
-**Fix:** Read the URL from the browser's location or query string at runtime, not from the environment:
-
-```python
-# settings.py — evaluated at import time inside WASM
-import sys as _sys
-if _sys.platform == "emscripten":
-    import js as _js
-    import urllib.parse as _up
-    _qs = _up.parse_qs(_js.window.location.search.lstrip("?"))
-    WS_URL = _qs.get("ws", ["wss://your-server.onrender.com"])[0]
-else:
-    import os as _os
-    WS_URL = _os.environ.get("SPACE_SNAKES_WS_URL", "ws://localhost:8765")
-```
-
-Or simpler: hardcode the production URL for WASM and let the env var override for desktop only. Either way, the current code will always point to localhost in the browser.
-
----
-
-## Deployment Blockers
-
-### 2. No GitHub Pages CI/CD pipeline
-
-There is no `.github/workflows/` directory and no `gh-pages` branch. The Pygbag build step (`python3 -m pygbag --build main.py`) has never been run, and nothing publishes `build/web/` to GitHub Pages. The feature is fully implemented but cannot actually be deployed as-is.
-
-Minimum required: a `.github/workflows/deploy.yml` that runs `pygbag --build` and pushes the output to the `gh-pages` branch.
+| 1 | `os.environ` always empty in WASM — WS_URL always localhost in browser | Fixed: emscripten path reads URL from query string (`settings.py:76–80`) |
+| 2 | No `.github/workflows/` pipeline | Fixed: `.github/workflows/deploy.yml` exists and wires up Pygbag build + Pages deploy |
+| 3 | JS callbacks not wrapped in `create_proxy()` — GC silently drops them | Fixed: browser path is now pure JS; no Python callbacks cross the FFI boundary |
+| 4 | `json.dumps` called but discarded on desktop `send_direction` path | Fixed: desktop path passes a dict directly to the queue |
+| 5 | `import os` at bottom of `settings.py` | Fixed: both `import sys` and `import os` are now at the top |
+| 6 | `_next_id` counter never reset — HUD showed "P101" after reconnects | Fixed: `add_player()` uses lowest-free-slot allocation; no monotonic counter |
+| 7 | No session reset when all players disconnect | Fixed: `server.py:68–70` calls `session.reset()` in the `finally` block when lobby empties |
+| 8 | Spawn slot collision after out-of-order disconnects | Fixed: `add_player()` scans `range(MAX_PLAYERS)` for the first free slot |
+| 9 | `multiplayer.md` described a lobby/join phase that was never built | Fixed: protocol section now matches the implementation |
 
 ---
 
 ## Bugs
 
-### 3. `client_net.py:87–88` — JS callbacks may be garbage-collected
+### 1. `client_net.py:131–136` — bare `except Exception: pass` swallows all errors in `_recv_loop`
 
 ```python
-ws.onmessage = _on_message
-ws.onclose = _on_close
+async def _recv_loop(self):
+    try:
+        async for raw in self._ws:
+            self._process_message(raw)
+    except Exception:
+        self._connected = False
 ```
 
-In Pyodide (which Pygbag uses as its WASM runtime), Python functions assigned to JS properties need to be wrapped with `pyodide.ffi.create_proxy()` to prevent the Python garbage collector from freeing them while JS still holds a live reference. Without this the callback silently stops firing after a GC cycle, causing the client to stop receiving state updates mid-session.
+Any exception — including `AttributeError`, `TypeError`, or a bug in `_process_message` — silently sets `_connected = False` and exits. The player sees the game drop back to the menu with no indication of what went wrong. At minimum, log the exception. The same pattern appears in `_send_loop` (lines 138–147).
+
+**Fix:**
+```python
+except Exception as exc:
+    print(f"[recv_loop] disconnected: {exc}")
+    self._connected = False
+```
+
+### 2. `client_net.py:54` — double `json.dumps` with no explanation
 
 ```python
-from pyodide.ffi import create_proxy
-ws.onmessage = create_proxy(_on_message)
-ws.onclose = create_proxy(_on_close)
+payload = json.dumps(json.dumps({"type": "input", "dir": direction}))
+js.eval(f"window._ss_ws && window._ss_ws.send({payload})")
 ```
 
-### 4. `client_net.py:50–56` — `send_direction` builds an unused JSON string on desktop path
-
-```python
-def send_direction(self, direction):
-    msg = json.dumps({"type": "input", "dir": direction})   # built unconditionally
-    if sys.platform == "emscripten":
-        if self._ws and self._connected:
-            self._ws.send(msg)                              # used here
-    else:
-        if self._send_queue is not None:
-            self._send_queue.put_nowait({"type": "input", "dir": direction})  # re-built as dict
-```
-
-On the desktop path `msg` is serialized to JSON but thrown away — the queue receives a freshly constructed dict instead. Move `json.dumps` inside the emscripten branch.
-
-### 5. `settings.py:57–69` — `import os` at the bottom of the file
-
-```python
-# --- Multiplayer server ---
-import os as _os
-WS_URL = _os.environ.get(...)
-```
-
-Imports belong at the top of the file. The `_os` private alias is unnecessary — `settings.py` is not star-imported anywhere, so `os` in the module namespace is harmless. This is a style issue that will confuse anyone reading the file top-to-bottom.
+The inner `json.dumps` produces a JSON string (`'{"type":"input","dir":"UP"}'`). The outer `json.dumps` wraps that string in JS-safe quotes so it can be dropped into `js.eval()` as a string literal. This is correct, but the double call looks like a bug to any future reader and will be "fixed" into an actual bug. Add a comment explaining the intent.
 
 ---
 
-## Carried / Still Unfixed (Low Severity)
+## Performance
 
-### 6. `server.py:17` — `_next_id` grows forever
+### 3. `snake.py:13` + `food.py:13` — `pygame.Surface` allocated per-segment and per-food every frame
 
-Module-level integer that increments on every connection. After many join/leave cycles the HUD shows "P101" etc. Skin cycling via `pid % 3` still works, but the label is misleading. Use `pid % 3` in the display string, or recycle IDs from a freed pool.
-
-### 7. `server.py` — no session reset when all players leave
-
-When all players disconnect, `session.snakes` becomes empty but food remains from the previous round. New players join a stale session with no way to start fresh.
-
-### 8. `game_logic.py:113` — spawn slot reuse after out-of-order disconnects
+`draw_snake_body` allocates 2 new `Surface` objects per body segment on every call:
 
 ```python
-idx = len(self.snakes)
-sx, sy = SPAWN_POSITIONS[idx % MAX_PLAYERS]
+for radius in (CELL + 6, CELL + 3):
+    glow_surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
 ```
 
-If player 0 disconnects and a new player joins while player 1 is still in the session, `len(self.snakes) == 1` assigns spawn index 1 (correct), but if player 1 then disconnects and another joins, the same index is reused. Under repeated churn two snakes can spawn at the same position.
+`draw_food_orbs` allocates 3 surfaces per food item per frame. At 60 FPS with three snakes of length ~15 each, that's roughly 5,400 surface allocations per second, all of which immediately become garbage. This drives GC pressure and is the dominant frame-time cost.
 
-### 9. `multiplayer.md` — stale protocol description
+**Fix:** Pre-allocate the glow surfaces once (they are all the same fixed size — `CELL` is a constant) and reuse them by clearing with `fill((0,0,0,0))` before each draw.
 
-Still describes `{ "type": "join", "name": "Player1" }` and a lobby phase that was never built. Should reflect the actual protocol or be removed.
+---
+
+## Documentation / Dead Code
+
+### 4. `snake-ai.md` describes `snake_ai.py` — file does not exist
+
+`snake-ai.md` documents a `SnakeAI` class in `snake_ai.py` with specific integration points in `game.py`, but `snake_ai.py` does not exist in the repository and `game.py` has no import or call to it. The document is either describing a removed feature or an unimplemented one.
+
+Either delete `snake-ai.md` or add a clear "Planned / not yet implemented" header so it isn't mistaken for documentation of working code.
+
+### 5. `multiplayer.md` — "Open Questions" section is legacy planning debt
+
+The bottom section lists questions ("Max players?", "What happens when a snake dies?", "Name entry?", "Room codes?") that have all been answered and implemented. New contributors reading this doc will be confused about whether these are still open decisions.
+
+Delete the "Open Questions" and "New Files Required" sections — both are pre-implementation artefacts that no longer reflect reality.
+
+---
+
+## Low Severity
+
+### 6. `game_logic.py:55–67` — respawn fallback is deterministic, not random
+
+When no standard spawn positions are clear, `respawn()` scans the grid top-to-bottom and picks the *first* valid cell:
+
+```python
+for y in range(2, ROWS - 2):
+    for x in range(2, COLS - 3):
+        if all((x - i, y) in empty_cells for i in range(3)):
+            candidates.append((x, y))
+            break   # exits inner loop
+    if candidates:
+        break       # exits outer loop
+```
+
+Multiple dead snakes respawning in the same tick will all land at the same top-left cell (the grid is so full that only one spot is found, and both snakes pick it). This causes an immediate head-on collision on the next tick. Collect *all* fallback candidates (or at least several) before calling `random.choice`.
 
 ---
 
@@ -136,12 +113,9 @@ Still describes `{ "type": "join", "name": "Player1" }` and a lobby phase that w
 
 | # | File | Severity | Issue |
 |---|------|----------|-------|
-| 1 | settings.py:69 | **Critical** | `os.environ` always empty in WASM — WS_URL is always localhost in browser builds |
-| 2 | (missing) | **Blocker** | No `.github/workflows/` pipeline — GitHub Pages deploy is not wired up |
-| 3 | client_net.py:87 | High | JS callbacks not wrapped in `create_proxy()` — GC will silently drop them |
-| 4 | client_net.py:50 | Low | `json.dumps` called but discarded on desktop path |
-| 5 | settings.py:57 | Low | `import os` at bottom of file; unconventional style |
-| 6 | server.py:17 | Low | `_next_id` never resets; HUD shows "P101" after reconnects |
-| 7 | server.py:16 | Low | No session reset when all players disconnect |
-| 8 | game_logic.py:113 | Low | Spawn slot collision after out-of-order disconnects |
-| 9 | multiplayer.md | Low | Stale protocol description |
+| 1 | client_net.py:131–147 | Medium | Silent bare `except` in recv/send loops — errors invisible to dev and user |
+| 2 | client_net.py:54 | Medium | Double `json.dumps` unexplained — looks like a bug, will be "fixed" into one |
+| 3 | snake.py:13, food.py:13 | Medium | Per-frame `Surface` allocation per segment/food — dominant GC pressure at 60 FPS |
+| 4 | snake-ai.md | Low | Documents `snake_ai.py` which does not exist |
+| 5 | multiplayer.md | Low | "Open Questions" section is stale pre-implementation planning |
+| 6 | game_logic.py:55–67 | Low | Respawn fallback is deterministic — crowded-grid snakes all land on same cell |

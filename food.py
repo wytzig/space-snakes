@@ -1,35 +1,19 @@
 import pygame
-import random
 import math
-from settings import CELL, COLS, ROWS, NEON_GOLD
+from settings import CELL, NEON_GOLD
 
 
-class Food:
-    def __init__(self):
-        self.pos = (0, 0)
-        self.pulse = 0.0
-        self.spawn([])
-
-    def spawn(self, occupied):
-        while True:
-            pos = (random.randint(0, COLS - 1), random.randint(0, ROWS - 1))
-            if pos not in occupied:
-                self.pos = pos
-                break
-
-    def update(self):
-        self.pulse = (self.pulse + 0.08) % (2 * math.pi)
-
-    def draw(self, surface):
-        gx, gy = self.pos
+def draw_food_orbs(surface, positions, pulse):
+    """Draw glowing food orbs at each (gx, gy) position in positions."""
+    radius_base = int(CELL * 0.35 + math.sin(pulse) * 2)
+    for gx, gy in positions:
         cx = gx * CELL + CELL // 2
         cy = gy * CELL + CELL // 2
-        radius = int(CELL * 0.35 + math.sin(self.pulse) * 2)
+        r = radius_base
+        for draw_r, alpha in [(r + 8, 25), (r + 4, 55), (r, 200)]:
+            glow_surf = pygame.Surface((draw_r * 2, draw_r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (*NEON_GOLD, alpha), (draw_r, draw_r), draw_r)
+            surface.blit(glow_surf, (cx - draw_r, cy - draw_r))
+        pygame.draw.circle(surface, (255, 255, 180), (cx, cy), max(2, r - 3))
 
-        for r, alpha in [(radius + 8, 25), (radius + 4, 55), (radius, 200)]:
-            glow_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (*NEON_GOLD, alpha), (r, r), r)
-            surface.blit(glow_surf, (cx - r, cy - r))
 
-        # Bright core
-        pygame.draw.circle(surface, (255, 255, 180), (cx, cy), max(2, radius - 3))

@@ -26,7 +26,7 @@ A 16-bit retro-style snake game with neon laser aesthetics, set in space. Built 
 | High score persistence | Planned | JSON save file |
 | Particle effects | Planned | Death explosion, eat burst |
 | Background themes | Planned | Deep space, nebula, asteroid field |
-| Multiplayer (local) | Planned | Two snakes, split screen or shared |
+| Multiplayer (online) | Done | Up to 3 players via WebSocket; death->food+respawn; per-player neon colors |
 
 ---
 
@@ -34,12 +34,16 @@ A 16-bit retro-style snake game with neon laser aesthetics, set in space. Built 
 
 ```
 space-snakes/
-├── main.py              # Entry point, game loop
-├── game.py              # Core game state machine
-├── snake.py             # Snake entity (movement, growth, rendering)
-├── food.py              # Food spawning and rendering
-├── renderer.py          # All drawing logic, glow effects
-├── settings.py          # Constants and config (colors, speeds, sizes)
+├── main.py                  # Async entry point (Pygbag-compatible)
+├── game.py                  # Multiplayer client: connects to server, renders state
+├── game_logic.py            # Server-side pure-Python game logic (no pygame)
+├── server.py                # Asyncio WebSocket server (run separately or deploy to Render)
+├── client_net.py            # WebSocket client wrapper used by game.py
+├── snake.py                 # draw_snake_body() + Snake class (rendering)
+├── food.py                  # draw_food_orbs() + Food class (rendering)
+├── renderer.py              # Starfield, HUD (scores, menu, grid)
+├── settings.py              # Constants and config (colors, speeds, WS_URL)
+├── requirements_server.txt  # websockets package for server deployment
 ├── assets/
 │   ├── fonts/           # Pixel fonts (.ttf)
 │   ├── sounds/          # SFX and music (.ogg / .wav)
@@ -52,13 +56,15 @@ space-snakes/
 - **Glow effect**: Rendered by drawing multiple blurred/alpha-scaled copies of the snake body at increasing sizes, then compositing.
 - **Snake body**: List of (x, y) grid cells. Head is `body[0]`. Each tick, prepend new head and pop tail (unless growing).
 - **Grid vs pixel**: Internal logic uses grid cells; renderer scales to pixel coords.
-- **Game states**: `MENU → PLAYING → PAUSED → GAME_OVER → SETTINGS`
+- **Game states**: `MENU → PLAYING`
 
 ---
 
 ## Recurring Issues / Known Gotchas
 
 - **pygame install on WSL**: `pip3 install pygame` tries to compile from source and fails without SDL dev libs. Use `sudo apt install python3-pygame` instead — it's pre-built and just works.
+- **websockets install**: `/usr/bin/pip3` on this machine is tied to Python 3.7, but `python3` resolves to 3.10. Always use `python3 -m pip install websockets` so the package lands in the running interpreter, not 3.7.
+- **WS_URL for production**: `settings.py` defaults to `ws://localhost:8765`. Before building with Pygbag for GitHub Pages, set env var `SPACE_SNAKES_WS_URL=wss://your-server.onrender.com` (must be `wss://` — browsers block `ws://` from HTTPS pages).
 - **Always use `python3` / `pip3`**: The system `python` on this WSL install is Python 2.7. All code is Python 3. Running with `python` will fail immediately.
 - **Non-ASCII in source files**: Python 2 chokes on any unicode in source without an encoding declaration. Avoid all non-ASCII in comments/strings (arrows, em-dashes, etc.) to keep the files safe even if someone runs the wrong interpreter.
 - **Pygame font rendering on WSL**: May need to install fonts via `sudo apt install fonts-dejavu` if custom .ttf missing.

@@ -1,43 +1,30 @@
+import math
 import pygame
 from settings import (
-    COLS, ROWS, SPEED_NORMAL,
-    STATE_MENU, STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER,
-    DEFAULT_SKIN,
+    STATE_MENU, STATE_PLAYING,
+    SKINS, PLAYER_SKINS,
+    NEON_PINK, SCREEN_W, SCREEN_H,
 )
-from snake import Snake, UP, DOWN, LEFT, RIGHT
-from food import Food
+from snake import draw_snake_body
+from food import draw_food_orbs
 from renderer import Starfield, HUD
+from client_net import ClientNet
 
 
 class Game:
-    def __init__(self, screen, fonts):
+    def __init__(self, screen, fonts, net: ClientNet):
         self.screen = screen
         self.hud = HUD(*fonts)
         self.starfield = Starfield()
+        self.net = net
         self.state = STATE_MENU
         self.tick = 0
+        self._food_pulse = 0.0
+        self._should_connect = False
         self._touch_start = None
-        self._reset()
-
-    def _reset(self):
-        self.snake = Snake(skin=DEFAULT_SKIN)
-        self.food = Food()
-        self.food.spawn(set(self.snake.body))
-        self.move_timer = 0
+        self._connect_error = None
 
     # --- Input ---
-    def _handle_swipe(self, dx, dy):
-        MIN_SWIPE = 0.05
-        if abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
-            return
-        if self.state == STATE_MENU:
-            self._reset()
-            self.state = STATE_PLAYING
-        elif self.state == STATE_PLAYING:
-            if abs(dx) > abs(dy):
-                self.snake.set_direction(RIGHT if dx > 0 else LEFT)
-            else:
-                self.snake.set_direction(DOWN if dy > 0 else UP)
 
     def handle_event(self, event):
         if event.type == pygame.FINGERDOWN:
@@ -53,75 +40,80 @@ class Game:
             k = event.key
             if self.state == STATE_MENU:
                 if k == pygame.K_RETURN:
-                    self._reset()
-                    self.state = STATE_PLAYING
+                    self._should_connect = True
+                    self._connect_error = None
             elif self.state == STATE_PLAYING:
                 if k in (pygame.K_UP, pygame.K_w):
-                    self.snake.set_direction(UP)
+                    self.net.send_direction("UP")
                 elif k in (pygame.K_DOWN, pygame.K_s):
-                    self.snake.set_direction(DOWN)
+                    self.net.send_direction("DOWN")
                 elif k in (pygame.K_LEFT, pygame.K_a):
-                    self.snake.set_direction(LEFT)
+                    self.net.send_direction("LEFT")
                 elif k in (pygame.K_RIGHT, pygame.K_d):
-                    self.snake.set_direction(RIGHT)
-                elif k == pygame.K_p:
-                    self.state = STATE_PAUSED
-            elif self.state == STATE_PAUSED:
-                if k == pygame.K_p:
-                    self.state = STATE_PLAYING
-                if k == pygame.K_ESCAPE:
-                    self.state = STATE_MENU
-            elif self.state == STATE_GAMEOVER:
-                if k == pygame.K_r:
-                    self._reset()
-                    self.state = STATE_PLAYING
-                if k == pygame.K_ESCAPE:
-                    self.state = STATE_MENU
+                    self.net.send_direction("RIGHT")
 
-    # --- Update ---
-    def update(self):
+    def _handle_swipe(self, dx, dy):
+        MIN_SWIPE = 0.05
+        if abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
+            return
+        if self.state == STATE_MENU:
+            self._should_connect = True
+            self._connect_error = None
+        elif self.state == STATE_PLAYING:
+            if abs(dx) > abs(dy):
+                self.net.send_direction("RIGHT" if dx > 0 else "LEFT")
+            else:
+                self.net.send_direction("DOWN" if dy > 0 else "UP")
+
+    # --- Update (async for Pygbag) ---
+
+    async def update(self):
         self.tick += 1
+        self._food_pulse = (self._food_pulse + 0.08) % (2 * math.pi)
         self.starfield.update()
-        self.food.update()
+        self.net.poll()  # process buffered JS messages on emscripten
 
-        if self.state != STATE_PLAYING:
-            return
+        if self._should_connect:
+            self._should_connect = False
+            try:
+                await self.net.connect()
+                self.state = STATE_PLAYING
+            except Exception as exc:
+                self._connect_error = str(exc)
 
-        self.move_timer += 1
-        if self.move_timer < SPEED_NORMAL:
-            return
-        self.move_timer = 0
-
-        self.snake.move()
-
-        if not self.snake.alive:
-            self.state = STATE_GAMEOVER
-            return
-
-        if self.snake.head() == self.food.pos:
-            self.snake.score += 10
-            self.snake.grow()
-            self.food.spawn(set(self.snake.body))
+        if self.state == STATE_PLAYING and not self.net.is_connected():
+            self.state = STATE_MENU
 
     # --- Draw ---
+
     def draw(self):
         self.starfield.draw(self.screen)
 
         if self.state == STATE_MENU:
             self.hud.draw_menu(self.screen, self.tick)
+            if self._connect_error:
+                err = self.hud.font_small.render(
+                    f"Could not connect: {self._connect_error}", True, NEON_PINK
+                )
+                self.screen.blit(err, (SCREEN_W // 2 - err.get_width() // 2, SCREEN_H // 2 + 140))
+            return
 
-        elif self.state in (STATE_PLAYING, STATE_PAUSED):
-            self.hud.draw_grid(self.screen)
-            self.food.draw(self.screen)
-            self.snake.draw(self.screen)
-            self.hud.draw_score(self.screen, self.snake.score)
-            if self.state == STATE_PAUSED:
-                self.hud.draw_pause(self.screen)
+        state = self.net.get_state()
+        if state is None:
+            return   # waiting for first server tick
 
-        elif self.state == STATE_GAMEOVER:
-            self.hud.draw_grid(self.screen)
-            self.food.draw(self.screen)
-            self.snake.draw(self.screen)
-            self.hud.draw_gameover(self.screen, self.snake.score, self.tick)
+        self.hud.draw_grid(self.screen)
 
-        # flip is handled by main() after scaling to the window
+        foods = [tuple(f) for f in state.get("foods", [])]
+        draw_food_orbs(self.screen, foods, self._food_pulse)
+
+        for snake_data in state.get("snakes", []):
+            if not snake_data.get("alive", True):
+                continue   # skip snakes that failed to respawn this tick
+            pid = snake_data["id"]
+            body = [tuple(p) for p in snake_data["body"]]
+            skin = SKINS[PLAYER_SKINS[pid % len(PLAYER_SKINS)]]
+            draw_snake_body(self.screen, body, skin)
+
+        scores = [(s["id"], s["score"]) for s in state.get("snakes", [])]
+        self.hud.draw_scores(self.screen, scores, self.net.player_id)

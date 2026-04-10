@@ -1,6 +1,7 @@
 import sys
+import asyncio
 import pygame
-from settings import SCREEN_W, SCREEN_H, FPS, TITLE
+from settings import SCREEN_W, SCREEN_H, FPS, TITLE, WS_URL, STATE_MENU
 
 
 def load_fonts():
@@ -14,55 +15,53 @@ def load_fonts():
     return font_large, font_small
 
 
-def main():
+async def main():
     pygame.init()
 
-    # Resizable OS window — user can drag or maximise freely
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.RESIZABLE)
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
 
     fonts = load_fonts()
-
-    # Game always renders at the fixed logical resolution.
-    # main() scales this canvas to fill whatever the window currently is.
     logical = pygame.Surface((SCREEN_W, SCREEN_H))
 
+    from client_net import ClientNet
     from game import Game
-    game = Game(logical, fonts)
+    net = ClientNet(WS_URL)
+    game = Game(logical, fonts, net)
 
     fullscreen = False
-
     running = True
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE and game.state == "menu":
+                if event.key == pygame.K_ESCAPE and game.state == STATE_MENU:
                     running = False
                 if event.key == pygame.K_f:
                     fullscreen = not fullscreen
                     if fullscreen:
-                        # Native resolution fullscreen — logical canvas scales up to fill it
                         screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
                     else:
                         screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.RESIZABLE)
             game.handle_event(event)
 
-        game.update()
-        game.draw()  # draws into logical; does NOT flip
+        await game.update()
+        game.draw()
 
-        # Scale logical canvas to the current window size and present
         win_w, win_h = screen.get_size()
         pygame.transform.scale(logical, (win_w, win_h), screen)
         pygame.display.flip()
 
         clock.tick(FPS)
+        await asyncio.sleep(0)   # yield to event loop (required by Pygbag)
 
+    await net.close()
     pygame.quit()
     sys.exit()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

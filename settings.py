@@ -1,4 +1,5 @@
-import pygame
+import sys
+import os
 
 # --- Window ---
 TITLE = "Space Snakes"
@@ -52,9 +53,31 @@ BACKGROUNDS = {
 
 DEFAULT_BG = "deep_space"
 
+# --- Player skins (index = player slot 0..2) ---
+PLAYER_SKINS = ["laser_green", "laser_cyan", "laser_pink"]
+
 # --- Game states ---
-STATE_MENU      = "menu"
-STATE_PLAYING   = "playing"
-STATE_PAUSED    = "paused"
-STATE_GAMEOVER  = "gameover"
+STATE_MENU    = "menu"
+STATE_PLAYING = "playing"
+
+# --- Direction vectors (shared by game_logic and client input) ---
+UP    = (0, -1)
+DOWN  = (0,  1)
+LEFT  = (-1, 0)
+RIGHT = (1,  0)
+OPPOSITES = {UP: DOWN, DOWN: UP, LEFT: RIGHT, RIGHT: LEFT}
+DIR_MAP = {"UP": UP, "DOWN": DOWN, "LEFT": LEFT, "RIGHT": RIGHT}
+
+# --- Multiplayer server ---
+# Desktop: override with env var SPACE_SNAKES_WS_URL (must be ws://)
+# Browser (Pygbag): os.environ is always empty; URL is read from the query string instead.
+#   e.g. https://yourname.github.io/space-snakes/?ws=wss://your-server.onrender.com
+#   Must be wss:// — browsers block ws:// connections from HTTPS pages.
+if sys.platform == "emscripten":
+    import js as _js
+    import urllib.parse as _up
+    _qs = _up.parse_qs(_js.window.location.search.lstrip("?"))
+    WS_URL = _qs.get("ws", ["wss://your-server.onrender.com"])[0]
+else:
+    WS_URL = os.environ.get("SPACE_SNAKES_WS_URL", "ws://localhost:8765")
 

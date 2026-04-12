@@ -69,7 +69,7 @@ OPPOSITES = {UP: DOWN, DOWN: UP, LEFT: RIGHT, RIGHT: LEFT}
 DIR_MAP = {"UP": UP, "DOWN": DOWN, "LEFT": LEFT, "RIGHT": RIGHT}
 
 # --- Music ---
-MUSIC_PATH = os.path.join(os.path.dirname(__file__), "assets", "sounds", "space_snakes.mpeg")
+MUSIC_PATH = os.path.join(os.path.dirname(__file__), "assets", "sounds", "space_snakes.ogg")
 MUSIC_VOLUME = 0.7
 
 # --- Multiplayer server ---

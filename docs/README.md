@@ -98,6 +98,62 @@ Send this exact link to up to 2 friends. Each person opens it in their browser, 
 
 ---
 
+## Publish to itch.io
+
+itch.io supports HTML5 games — the same Pygbag WASM build you use for GitHub Pages works here.
+
+**Step 1 — Build the WASM bundle locally**
+
+```bash
+pip install pygame pygbag
+python -m pygbag --build main.py
+```
+
+The distributable lands in `build/web/`. Pygbag puts `index.html` directly inside that folder.
+
+**Step 2 — Zip correctly (index.html must be at the zip root)**
+
+```bash
+cd build/web
+zip -r ../../space-snakes-web.zip .
+cd ../..
+```
+
+Verify before uploading — `index.html` must appear at the top level, not inside a subfolder:
+
+```bash
+unzip -l space-snakes-web.zip | head -5
+# Good:  index.html
+# Bad:   web/index.html  or  build/web/index.html
+```
+
+If you see a nested path, delete the zip and re-run from inside `build/web/` as shown above.
+
+**Step 3 — Create the game on itch.io**
+
+1. Go to [itch.io](https://itch.io) → **Dashboard** → **Create new project**
+2. Set **Kind of project** to **HTML**
+3. Upload `space-snakes-web.zip` and tick **"This file will be played in the browser"**
+4. Set **Embed options → Shared Array Buffer** — tick **"This game requires SharedArrayBuffer"**
+   (Pygbag WASM needs this — without it the game will not load)
+5. Set a frame size of at least **960 × 720**
+
+**Step 4 — Configure the server URL**
+
+itch.io serves over HTTPS, so you need `wss://` (not `ws://`). Append your server address to the game URL:
+
+```
+https://YOUR-NAME.itch.io/space-snakes?ws=wss://YOUR-SERVER.onrender.com
+```
+
+Share this link — players open it in their browser, press **Enter**, and join.
+
+> **Music note:** If music doesn't play in-browser, convert the audio to OGG (better WASM support):
+> `ffmpeg -i assets/sounds/space_snakes.mpeg assets/sounds/space_snakes.ogg`
+> Then update `MUSIC_PATH` in `settings.py` to point to the `.ogg` file.
+
+---
+
 ## Run Locally (Python)
 
 To play on your own machine (no browser needed):

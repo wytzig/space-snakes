@@ -41,13 +41,18 @@ async def main():
     net = ClientNet(WS_URL)
     game = Game(logical, fonts, net)
 
-    _start_music()
+    # Music must start after a user gesture — browsers block autoplay before that.
+    # _music_started: written in the event loop below, never reset (one-shot).
+    _music_started = False
 
     fullscreen = False
     running = True
 
     while running:
         for event in pygame.event.get():
+            if not _music_started and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+                _start_music()
+                _music_started = True
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:

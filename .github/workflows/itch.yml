@@ -1,0 +1,33 @@
+name: Build for itch.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-itch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: pip install pygame pygbag
+
+      - name: Build WASM bundle
+        run: python -m pygbag --build main.py
+
+      - name: Zip for itch.io (index.html at root)
+        run: cd build/web && zip -r ../../space-snakes-itch.zip .
+
+      - name: Upload itch.io artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: space-snakes-itch-io
+          path: space-snakes-itch.zip
+          retention-days: 30

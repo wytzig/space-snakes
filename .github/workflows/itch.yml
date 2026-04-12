@@ -22,12 +22,9 @@ jobs:
       - name: Build WASM bundle
         run: python -m pygbag --build main.py
 
-      - name: Zip for itch.io (index.html at root)
-        run: cd build/web && zip -r ../../space-snakes-itch.zip .
-
       - name: Upload itch.io artifact
         uses: actions/upload-artifact@v4
         with:
           name: space-snakes-itch-io
-          path: space-snakes-itch.zip
+          path: build/web
           retention-days: 30

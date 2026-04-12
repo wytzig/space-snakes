@@ -78,8 +78,22 @@ class HUD:
         px = SCREEN_W // 2 - prompt.get_width() // 2
         surface.blit(prompt, (px, SCREEN_H // 2 + 40))
 
-        sub = self.font_small.render("ESC to quit   F fullscreen", True, STAR_DIM)
+        sub = self.font_small.render("ESC quit   F fullscreen   M mute", True, STAR_DIM)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 90))
 
     def draw_grid(self, surface):
         surface.blit(self._grid_surf, (0, 0))
+
+    def draw_mute_button(self, surface, muted):
+        """Draw a mute toggle button in the top-right corner. Returns the button Rect."""
+        label = "M:OFF" if muted else "M:ON"
+        color = STAR_DIM if muted else NEON_GREEN
+        text = self.font_small.render(label, True, color)
+        pad = 6
+        w = text.get_width() + pad * 2
+        h = text.get_height() + pad * 2
+        rect = pygame.Rect(SCREEN_W - w - 8, 8, w, h)
+        pygame.draw.rect(surface, (20, 20, 40), rect, border_radius=4)
+        pygame.draw.rect(surface, color, rect, width=1, border_radius=4)
+        surface.blit(text, (rect.x + pad, rect.y + pad))
+        return rect

@@ -19,7 +19,7 @@ A 16-bit retro-style snake game with neon laser aesthetics, set in space. Built 
 | Main menu screen | Done | Title + start/quit |
 | Game over screen | Done | Score + restart prompt |
 | Sound effects | Planned | eat, death, boost |
-| Background music | Planned | Chiptune / synthwave loop |
+| Background music | Done | space_snakes.mpeg loops via pygame.mixer; M key or HUD button mutes |
 | Settings screen | Planned | Background themes, snake color, speed |
 | Multiple snake skins | Planned | Different neon colors/patterns |
 | Power-ups | Planned | Speed boost, shield, multi-food |
@@ -46,10 +46,15 @@ space-snakes/
 ├── requirements_server.txt  # websockets package for server deployment
 ├── assets/
 │   ├── fonts/           # Pixel fonts (.ttf)
-│   ├── sounds/          # SFX and music (.ogg / .wav)
+│   ├── sounds/          # SFX and music (.ogg / .wav / .mpeg)
 │   └── images/          # Any static sprites
-├── CLAUDE.md            # This file
-└── README.md            # User-facing docs
+├── docs/
+│   ├── README.md        # User-facing docs
+│   └── multiplayer.md   # Multiplayer feature notes
+├── .claude/
+│   ├── CLAUDE.md        # This file
+│   ├── feature.md       # Active feature plan
+│   └── code-review.md   # Dev tooling notes
 ```
 
 ### Key Design Decisions

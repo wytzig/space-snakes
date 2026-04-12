@@ -68,6 +68,10 @@ RIGHT = (1,  0)
 OPPOSITES = {UP: DOWN, DOWN: UP, LEFT: RIGHT, RIGHT: LEFT}
 DIR_MAP = {"UP": UP, "DOWN": DOWN, "LEFT": LEFT, "RIGHT": RIGHT}
 
+# --- Music ---
+MUSIC_PATH = os.path.join(os.path.dirname(__file__), "assets", "sounds", "space_snakes.mpeg")
+MUSIC_VOLUME = 0.7
+
 # --- Multiplayer server ---
 # Desktop: override with env var SPACE_SNAKES_WS_URL (must be ws://)
 # Browser (Pygbag): os.environ is always empty; URL is read from the query string instead.

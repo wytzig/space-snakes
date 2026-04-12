@@ -24,6 +24,9 @@ class Game:
         self._connecting = False
         self._touch_start = None
         self._connect_error = None
+        # muted: written here, read by main.py to sync pygame.mixer volume
+        self.muted = False
+        self._mute_btn_rect = None  # set each draw(); hit-tested in handle_event
 
     # --- Input ---
 
@@ -37,8 +40,14 @@ class Game:
                 self._handle_swipe(dx, dy)
                 self._touch_start = None
 
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._mute_btn_rect and self._mute_btn_rect.collidepoint(event.pos):
+                self.muted = not self.muted
+
         if event.type == pygame.KEYDOWN:
             k = event.key
+            if k == pygame.K_m:
+                self.muted = not self.muted
             if self.state == STATE_MENU:
                 if k == pygame.K_RETURN:
                     self._should_connect = True
@@ -101,11 +110,13 @@ class Game:
                 label = f"Could not connect: {status}" if self._connect_error and not self._connecting else status
                 msg = self.hud.font_small.render(label, True, color)
                 self.screen.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2, SCREEN_H // 2 + 140))
+            self._mute_btn_rect = self.hud.draw_mute_button(self.screen, self.muted)
             return
 
         state = self.net.get_state()
         if state is None:
-            return   # waiting for first server tick
+            self._mute_btn_rect = None  # button not drawn this frame; clear to avoid ghost hit-test
+            return
 
         self.hud.draw_grid(self.screen)
 
@@ -122,3 +133,4 @@ class Game:
 
         scores = [(s["id"], s["score"]) for s in state.get("snakes", [])]
         self.hud.draw_scores(self.screen, scores, self.net.player_id)
+        self._mute_btn_rect = self.hud.draw_mute_button(self.screen, self.muted)

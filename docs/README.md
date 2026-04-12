@@ -17,7 +17,8 @@ Up to 3 players connect from any browser. When a snake dies its body turns into 
 - [x] Retro pixel font UI
 - [x] WASD / arrow key controls
 - [x] Death-to-food respawn mechanic
-- [ ] Sound effects & chiptune music
+- [x] Background music (space_snakes.mpeg loops; M key or button to mute)
+- [ ] Sound effects (eat, death, boost)
 - [ ] Background themes (nebula, asteroid field)
 - [ ] Power-ups (speed boost, shield)
 - [ ] High score persistence
@@ -92,6 +93,7 @@ Send this exact link to up to 2 friends. Each person opens it in their browser, 
 |---|---|
 | Arrow keys / WASD | Steer your snake |
 | F | Toggle fullscreen |
+| M | Toggle music mute |
 | ESC | Back to menu |
 
 ---

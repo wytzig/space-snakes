@@ -1,7 +1,7 @@
 import sys
 import asyncio
 import pygame
-from settings import SCREEN_W, SCREEN_H, FPS, TITLE, WS_URL, STATE_MENU
+from settings import SCREEN_W, SCREEN_H, FPS, TITLE, WS_URL, STATE_MENU, MUSIC_PATH, MUSIC_VOLUME
 
 
 def load_fonts():
@@ -15,7 +15,18 @@ def load_fonts():
     return font_large, font_small
 
 
+def _start_music():
+    """Load and loop background music. Silently skips if file missing or mixer unavailable."""
+    try:
+        pygame.mixer.music.load(MUSIC_PATH)
+        pygame.mixer.music.set_volume(MUSIC_VOLUME)
+        pygame.mixer.music.play(-1)
+    except Exception:
+        pass
+
+
 async def main():
+    pygame.mixer.pre_init(44100, -16, 2, 2048)
     pygame.init()
 
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.RESIZABLE)
@@ -29,6 +40,8 @@ async def main():
     from game import Game
     net = ClientNet(WS_URL)
     game = Game(logical, fonts, net)
+
+    _start_music()
 
     fullscreen = False
     running = True
@@ -50,6 +63,7 @@ async def main():
 
         await game.update()
         game.draw()
+        pygame.mixer.music.set_volume(0.0 if game.muted else MUSIC_VOLUME)
 
         win_w, win_h = screen.get_size()
         pygame.transform.scale(logical, (win_w, win_h), screen)
